@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DustBoy 3D - Quantum Monitoring</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+        }
+
+        #ui-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            pointer-events: auto;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo span {
+            color: #38bdf8;
+        }
+
+        .status-pill {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            padding: 6px 16px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background: currentColor;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: scale(1.5);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .main-stats {
+            width: 320px;
+        }
+
+        .stat-item {
+            margin-top: 20px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #94a3b8;
+        }
+
+        .stat-value {
+            font-size: 48px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            margin-top: 4px;
+        }
+
+        .stat-unit {
+            font-size: 16px;
+            color: #64748b;
+            font-weight: 400;
+        }
+
+        footer {
+            font-size: 12px;
+            color: #475569;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #canvas-info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0.5;
+            transition: opacity 0.5s;
+        }
+
+        .badge {
+            background: #38bdf8;
+            color: #020617;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 800;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui-wrapper">
+        <header>
+            <div class="logo">💨 DUSTBOY <span>3D</span></div>
+            <div class="status-pill" id="mqtt-status">
+                <div class="pulse"></div> SYNCING QUANTUM DATA
+            </div>
+        </header>
+
+        <div class="main-stats glass-panel">
+            <div class="stat-item">
+                <div class="stat-label">System Average</div>
+                <div class="stat-value" id="avg-pm25">00.0 <span class="stat-unit">µg/m³</span></div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-label">Active Nodes</div>
+                <div class="stat-value" id="active-nodes">0 <span class="stat-unit">Stations</span></div>
+            </div>
+            <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid rgba(255, 255, 255, 0.05);">
+                <div class="stat-label">Latest Station</div>
+                <div id="station-name" style="margin-top: 8px; font-weight: 600; color: #38bdf8;">Searching...</div>
+                <div id="station-loc" style="font-size: 12px; color: #64748b; margin-top: 4px;">Lat: -- | Lon: --</div>
+            </div>
+        </div>
+
+        <footer>
+            <div>OPERATING MODE: NEURAL 3D DEEP-SEA</div>
+            <div>PROTOTYPE V1.0 - GRAVITY ORACLE</div>
+        </footer>
+    </div>
+
+    <div id="canvas-info">
+        <p>Orbiting Data Stream Intercepted</p>
+        <p style="font-size: 11px;">[ LEFT CLICK TO ROTATE | SCROLL TO ZOOM ]</p>
+    </div>
+
+    <!-- Load MQTT and Three.js -->
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        (function () {
+            // --- 1. THREE.JS SCENE SETUP ---
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            scene.fog = new THREE.FogExp2(0x020617, 0.002);
+
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(0, 400, 800);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+
+            // Lights
+            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambient);
+            const point = new THREE.PointLight(0x38bdf8, 2, 1000);
+            point.position.set(200, 500, 200);
+            scene.add(point);
+
+            // Core Visualization
+            const coreGeo = new THREE.IcosahedronGeometry(120, 2);
+            const coreMat = new THREE.MeshPhongMaterial({
+                color: 0x38bdf8,
+                wireframe: true,
+                emissive: 0x38bdf8,
+                emissiveIntensity: 0.5,
+                transparent: true,
+                opacity: 0.8
+            });
+            const core = new THREE.Mesh(coreGeo, coreMat);
+            scene.add(core);
+
+            const internalCore = new THREE.Mesh(
+                new THREE.SphereGeometry(60, 32, 32),
+                new THREE.MeshBasicMaterial({ color: 0x38bdf8 })
+            );
+            scene.add(internalCore);
+
+            // Grid Floor
+            const grid = new THREE.GridHelper(2000, 30, 0x1e293b, 0x0f172a);
+            grid.position.y = -200;
+            scene.add(grid);
+
+            // Particle System (Dust)
+            const particleCount = 2000;
+            const particles = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const colors = new Float32Array(particleCount * 3);
+            for (let i = 0; i < particleCount * 3; i++) {
+                positions[i] = (Math.random() - 0.5) * 2000;
+                colors[i] = Math.random();
+            }
+            particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            particles.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            const particleMat = new THREE.PointsMaterial({
+                size: 2,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.6
+            });
+            const particleSystem = new THREE.Points(particles, particleMat);
+            scene.add(particleSystem);
+
+            const bars = new Map(); // Store 3D bars for stations
+
+            // --- 2. MQTT REAL-TIME CONNECTION ---
+            const mqttClient = mqtt.connect('wss://dustboy-wss-bridge.laris.workers.dev/mqtt');
+            let totalPM25 = 0;
+            let readingCount = 0;
+
+            mqttClient.on('connect', () => {
+                console.log('Quantum Link Established');
+                mqttClient.subscribe('DUSTBOY/+/+/+/status');
+                document.getElementById('mqtt-status').innerHTML = '<div class="pulse"></div> DATA LINK SECURED';
+                document.getElementById('mqtt-status').style.color = '#10b981';
+                document.getElementById('mqtt-status').style.background = 'rgba(16, 185, 129, 0.1)';
+            });
+
+            mqttClient.on('message', (topic, message) => {
+                try {
+                    const data = JSON.parse(message.toString());
+                    const stationId = data.nickname || data.db_mbs;
+                    const pm25 = parseFloat(data.pm25);
+
+                    if (isNaN(pm25)) return;
+
+                    // Update Globals
+                    readingCount++;
+                    totalPM25 += pm25;
+                    const avg = (totalPM25 / readingCount).toFixed(1);
+
+                    document.getElementById('avg-pm25').innerHTML = `${avg} <span class="stat-unit">µg/m³</span>`;
+                    document.getElementById('active-nodes').innerHTML = `${bars.size} <span class="stat-unit">Stations</span>`;
+                    document.getElementById('station-name').innerText = stationId;
+                    document.getElementById('station-loc').innerText = `Lat: ${data.lat || '??'} | Lon: ${data.lon || '??'}`;
+
+                    // Pulsing Effect on Core based on average
+                    const scaleFactor = 1 + (avg / 100);
+                    core.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                    internalCore.material.color.setHSL(0.55 - (avg / 300), 1, 0.5);
+
+                    // Update 3D Bars
+                    if (!bars.has(stationId)) {
+                        const barGroup = new THREE.Group();
+                        const barGeo = new THREE.BoxGeometry(20, 1, 20);
+                        const barMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8 });
+                        const bar = new THREE.Mesh(barGeo, barMat);
+
+                        // Position randomly in a circle around the core
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = 300 + Math.random() * 400;
+                        barGroup.position.set(Math.cos(angle) * radius, -200, Math.sin(angle) * radius);
+
+                        barGroup.add(bar);
+                        scene.add(barGroup);
+                        bars.set(stationId, { group: barGroup, mesh: bar });
+                    }
+
+                    const entry = bars.get(stationId);
+                    const targetHeight = pm25 * 5;
+                    entry.mesh.scale.y = targetHeight;
+                    entry.mesh.position.y = targetHeight / 2;
+
+                    // Color cooling/heating
+                    const barColor = new THREE.Color().setHSL(0.55 - (pm25 / 150), 1, 0.5);
+                    entry.mesh.material.color.copy(barColor);
+
+                } catch (e) {
+                    console.error('Data intercept failed:', e);
+                }
+            });
+
+            // --- 3. ANIMATION LOOP ---
+            function animate() {
+                requestAnimationFrame(animate);
+
+                const time = Date.now() * 0.001;
+
+                // Core Rotation
+                core.rotation.y += 0.005;
+                core.rotation.z += 0.003;
+
+                // Internal core pulse
+                const p = 1 + Math.sin(time * 2) * 0.1;
+                internalCore.scale.set(p, p, p);
+
+                // Particles movement
+                particleSystem.rotation.y += 0.0005;
+
+                controls.update();
+                renderer.render(scene, camera);
+            }
+
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+        })();
+    </script>
+
+</body>
+
+</html>
