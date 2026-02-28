@@ -281,20 +281,28 @@
                 document.getElementById('mqtt-status').style.background = 'rgba(16, 185, 129, 0.1)';
             });
 
+            console.log('Quantum Link Initialized - Build V1.1 (Fix: Status Filter)');
+
             mqttClient.on('message', (topic, message) => {
                 const msgStr = message.toString();
-                if (msgStr === 'offline' || msgStr === 'online') return; // Ignore status strings
+                console.log('📡 Intercepted:', topic, '->', msgStr.substring(0, 30) + (msgStr.length > 30 ? '...' : ''));
+
+                if (msgStr === 'offline' || msgStr === 'online') return;
 
                 try {
                     const data = JSON.parse(msgStr);
-                    const stationId = data.nickname || data.db_mbs || topic.split('/')[4];
-                    const pm25 = parseFloat(data.pm25);
+                    const stationId = data.nickname || data.db_mbs || topic.split('/')[4] || 'Unknown';
+                    const pm25 = parseFloat(data.pm25 || data.pm10 || data.pm1); // Support other fields
 
-                    if (isNaN(pm25)) return;
+                    if (isNaN(pm25)) {
+                        console.warn('No valid PM2.5 in:', stationId);
+                        return;
+                    }
 
                     // Update Globals
                     if (!bars.has(stationId)) {
-                        readingCount++; // Increment count only for new unique stations
+                        readingCount++;
+                        console.log('✅ New Node Sync:', stationId);
                     }
 
                     totalPM25 += pm25;
@@ -335,7 +343,7 @@
                     entry.mesh.material.color.copy(barColor);
 
                 } catch (e) {
-                    console.warn('Skipping non-data message:', msgStr);
+                    // This is expected for non-JSON status messages
                 }
             });
 
