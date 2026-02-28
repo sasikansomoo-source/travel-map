@@ -282,17 +282,23 @@
             });
 
             mqttClient.on('message', (topic, message) => {
+                const msgStr = message.toString();
+                if (msgStr === 'offline' || msgStr === 'online') return; // Ignore status strings
+
                 try {
-                    const data = JSON.parse(message.toString());
-                    const stationId = data.nickname || data.db_mbs;
+                    const data = JSON.parse(msgStr);
+                    const stationId = data.nickname || data.db_mbs || topic.split('/')[4];
                     const pm25 = parseFloat(data.pm25);
 
                     if (isNaN(pm25)) return;
 
                     // Update Globals
-                    readingCount++;
+                    if (!bars.has(stationId)) {
+                        readingCount++; // Increment count only for new unique stations
+                    }
+
                     totalPM25 += pm25;
-                    const avg = (totalPM25 / readingCount).toFixed(1);
+                    const avg = (totalPM25 / (readingCount || 1)).toFixed(1);
 
                     document.getElementById('avg-pm25').innerHTML = `${avg} <span class="stat-unit">µg/m³</span>`;
                     document.getElementById('active-nodes').innerHTML = `${bars.size} <span class="stat-unit">Stations</span>`;
@@ -311,7 +317,6 @@
                         const barMat = new THREE.MeshPhongMaterial({ color: 0x38bdf8 });
                         const bar = new THREE.Mesh(barGeo, barMat);
 
-                        // Position randomly in a circle around the core
                         const angle = Math.random() * Math.PI * 2;
                         const radius = 300 + Math.random() * 400;
                         barGroup.position.set(Math.cos(angle) * radius, -200, Math.sin(angle) * radius);
@@ -323,15 +328,14 @@
 
                     const entry = bars.get(stationId);
                     const targetHeight = pm25 * 5;
-                    entry.mesh.scale.y = targetHeight;
-                    entry.mesh.position.y = targetHeight / 2;
+                    entry.mesh.scale.y = targetHeight + 1; // Minimum height 1
+                    entry.mesh.position.y = (targetHeight / 2);
 
-                    // Color cooling/heating
                     const barColor = new THREE.Color().setHSL(0.55 - (pm25 / 150), 1, 0.5);
                     entry.mesh.material.color.copy(barColor);
 
                 } catch (e) {
-                    console.error('Data intercept failed:', e);
+                    console.warn('Skipping non-data message:', msgStr);
                 }
             });
 
