@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DustBoy 3D V2 - Hyper-Link</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #020617;
+            color: #f8fafc;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow: hidden;
+        }
+
+        #ui-wrapper {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 40px;
+            box-sizing: border-box;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            pointer-events: auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            color: #38bdf8;
+        }
+
+        .status-pill {
+            background: rgba(56, 189, 248, 0.1);
+            color: #38bdf8;
+            padding: 8px 20px;
+            border-radius: 100px;
+            font-size: 12px;
+            font-weight: 700;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pulse {
+            width: 10px;
+            height: 10px;
+            background: currentColor;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.3;
+                transform: scale(1.8);
+            }
+
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .stat-value {
+            font-size: 56px;
+            font-weight: 900;
+            color: #f8fafc;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 4px;
+        }
+
+        footer {
+            font-size: 11px;
+            color: #475569;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        #debug-console {
+            position: absolute;
+            bottom: 100px;
+            right: 40px;
+            width: 300px;
+            height: 150px;
+            background: rgba(0, 0, 0, 0.5);
+            font-family: monospace;
+            font-size: 10px;
+            padding: 10px;
+            overflow-y: auto;
+            pointer-events: auto;
+            color: #4ade80;
+            border-radius: 12px;
+            border: 1px solid rgba(74, 222, 128, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="ui-wrapper">
+        <header>
+            <div class="logo">DUSTBOY <span style="font-weight: 300; opacity: 0.7;">3D CORE V2</span></div>
+            <div class="status-pill" id="conn-status">
+                <div class="pulse"></div> INITIALIZING NEURAL LINK
+            </div>
+        </header>
+
+        <div class="glass-panel" style="width: 340px;">
+            <div class="stat-label">Global PM2.5 Flux</div>
+            <div class="stat-value" id="avg-pm25">0.0</div>
+            <div style="margin-top: 20px; font-size: 14px; color: #64748b;" id="node-info">Discovering nodes in the deep
+                stream...</div>
+            <div style="margin-top: 10px; display: flex; gap: 10px;">
+                <div id="node-count" style="color: #38bdf8; font-weight: 800;">0 NODES</div>
+                <div style="color: #475569;">|</div>
+                <div id="packet-count" style="color: #fbbf24; font-weight: 800;">0 PKTS</div>
+            </div>
+        </div>
+
+        <footer>
+            <div>BUILD: 2026.02.28.V2-CACHE-EX</div>
+            <div>SOURCE: PSRU QUANTUM FEED</div>
+        </footer>
+    </div>
+
+    <div id="debug-console"></div>
+
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x020617);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.set(0, 500, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.autoRotate = true;
+
+        // Core
+        const core = new THREE.Mesh(new THREE.IcosahedronBufferGeometry(150, 2), new THREE.MeshPhongMaterial({ color: 0x38bdf8, wireframe: true, transparent: true, opacity: 0.5 }));
+        scene.add(core);
+        const inner = new THREE.Mesh(new THREE.SphereBufferGeometry(80, 32, 32), new THREE.MeshBasicMaterial({ color: 0x38bdf8 }));
+        scene.add(inner);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+        const pl = new THREE.PointLight(0x38bdf8, 2, 2000); pl.position.set(0, 500, 0); scene.add(pl);
+
+        const bars = new Map();
+        let totalPM = 0, count = 0, packs = 0;
+
+        function log(m) {
+            const el = document.getElementById('debug-console');
+            el.innerHTML += `> ${m}<br>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        const client = mqtt.connect('wss://dustboy-wss-bridge.laris.workers.dev/mqtt');
+        client.on('connect', () => {
+            log('LINK ESTABLISHED');
+            client.subscribe('DUSTBOY/#'); // Broad subscription for data discovery
+            document.getElementById('conn-status').innerHTML = '<div class="pulse"></div> DATA STREAM ACTIVE';
+        });
+
+        client.on('message', (topic, payload) => {
+            packs++;
+            document.getElementById('packet-count').innerText = `${packs} PKTS`;
+            const str = payload.toString();
+
+            try {
+                if (str === 'offline' || str === 'online') return;
+                const data = JSON.parse(str);
+
+                // Try to find any PM data field
+                const pm = parseFloat(data.pm25 || data.pm10 || data.pm1 || data.pm2_5);
+                if (isNaN(pm)) return;
+
+                const id = data.nickname || data.db_mbs || topic.split('/').pop() || 'Node';
+                log(`SYNC: ${id} | PM2.5: ${pm}`);
+
+                totalPM += pm; count++;
+                const avg = (totalPM / count).toFixed(1);
+                document.getElementById('avg-pm25').innerText = avg;
+                document.getElementById('node-count').innerText = `${bars.size} NODES`;
+                document.getElementById('node-info').innerText = `Latest: ${id} (${pm} µg/m³)`;
+
+                if (!bars.has(id)) {
+                    const b = new THREE.Mesh(new THREE.BoxBufferGeometry(30, 1, 30), new THREE.MeshPhongMaterial({ color: 0x38bdf8 }));
+                    const ang = Math.random() * Math.PI * 2;
+                    const r = 400 + Math.random() * 300;
+                    b.position.set(Math.cos(ang) * r, -200, Math.sin(ang) * r);
+                    scene.add(b);
+                    bars.set(id, b);
+                }
+                const mesh = bars.get(id);
+                mesh.scale.y = pm * 10 + 1;
+                mesh.position.y = -200 + (pm * 5);
+                mesh.material.color.setHSL(0.6 - (pm / 100) * 0.6, 1, 0.5);
+
+                core.scale.setScalar(1 + (avg / 100));
+                inner.material.color.setHSL(0.6 - (avg / 100) * 0.6, 1, 0.5);
+
+            } catch (e) { }
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            core.rotation.y += 0.01;
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.onresize = () => {
+            camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
+    </script>
+</body>
+
+</html>
