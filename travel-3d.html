@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Steam Express - Passenger Edition</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #050505;
+            color: white;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            overflow: hidden;
+        }
+
+        #info {
+            position: absolute;
+            top: 25px;
+            left: 25px;
+            background: rgba(15, 23, 42, 0.9);
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 6px solid #f97316;
+            backdrop-filter: blur(12px);
+            z-index: 100;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 22px;
+            color: #f97316;
+            letter-spacing: 1px;
+        }
+
+        #location {
+            margin-top: 10px;
+            font-weight: 600;
+            color: #fdba74;
+        }
+
+        #status {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #f97316;
+            color: white;
+            padding: 10px 30px;
+            border-radius: 50px;
+            font-weight: 900;
+            text-transform: uppercase;
+            box-shadow: 0 0 25px rgba(249, 115, 22, 0.5);
+            z-index: 100;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="info">
+        <h1>🚂 Steam Express</h1>
+        <p>Chiang Mai ➔ Phitsanulok</p>
+        <div id="location">Coupling carriages...</div>
+    </div>
+
+    <div id="status">👥 3 Passenger Carriages Attached</div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.145.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        (function () {
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+            scene.fog = new THREE.FogExp2(0x020617, 0.0006);
+
+            const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 1, 20000);
+            camera.position.set(800, 600, 800);
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            const controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+            const sun = new THREE.DirectionalLight(0xfdba74, 1.5);
+            sun.position.set(1000, 1000, 500);
+            scene.add(sun);
+
+            // --- DATA & PATH ---
+            const waypoints = [
+                { lat: 18.4647, lon: 99.0567, name: "Lamphun" },
+                { lat: 18.3122, lon: 99.4131, name: "Lampang" },
+                { lat: 17.9727, lon: 100.0520, name: "Den Chai" },
+                { lat: 17.8089, lon: 100.0666, name: "Uttaradit" },
+                { lat: 16.8174, lon: 100.2580, name: "Phitsanulok" }
+            ];
+            const centerLat = 17.6;
+            const centerLon = 99.6;
+            const scale = 250;
+
+            function geoToPos(lat, lon) {
+                return new THREE.Vector3((lon - centerLon) * 111 * scale, 10, -(lat - centerLat) * 111 * scale);
+            }
+            const curve = new THREE.CatmullRomCurve3(waypoints.map(w => geoToPos(w.lat, w.lon)));
+
+            // --- TERRAIN ENHANCEMENT ---
+            const terrainGeo = new THREE.PlaneGeometry(30000, 30000, 64, 64);
+            const verts = terrainGeo.attributes.position.array;
+            for (let i = 0; i < verts.length; i += 3) {
+                const x = verts[i];
+                const y = verts[i + 1];
+                // Simple noise-like mountains
+                verts[i + 2] = (Math.sin(x * 0.0005) * Math.cos(y * 0.0005) * 400) +
+                    (Math.sin(x * 0.002) * 50);
+            }
+            terrainGeo.computeVertexNormals();
+
+            const terrain = new THREE.Mesh(
+                terrainGeo,
+                new THREE.MeshPhongMaterial({ color: 0x0f172a, flatShading: true })
+            );
+            terrain.rotation.x = -Math.PI / 2;
+            scene.add(terrain);
+
+            // Digital Grid Overlay on Terrain
+            const grid = new THREE.GridHelper(30000, 40, 0x1e293b, 0x1e293b);
+            grid.position.y = -5;
+            scene.add(grid);
+
+            // --- SCENERY (TREES) ---
+            const treeGroup = new THREE.Group();
+            const trunkMat = new THREE.MeshPhongMaterial({ color: 0x451a03 });
+            const leafMat = new THREE.MeshPhongMaterial({ color: 0x064e3b });
+
+            // Randomly place trees near the tracks
+            const pointsForTrees = curve.getPoints(100);
+            pointsForTrees.forEach(p => {
+                for (let j = 0; j < 5; j++) {
+                    const tree = new THREE.Group();
+                    const offset = new THREE.Vector3(
+                        (Math.random() - 0.5) * 600,
+                        0,
+                        (Math.random() - 0.5) * 600
+                    );
+                    if (offset.length() < 80) continue; // Don't block tracks
+
+                    const treePos = p.clone().add(offset);
+
+                    // Simple Pine Tree
+                    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 10), trunkMat);
+                    trunk.position.y = 5;
+                    tree.add(trunk);
+
+                    const leaves = new THREE.Mesh(new THREE.ConeGeometry(12, 30, 8), leafMat);
+                    leaves.position.y = 20;
+                    tree.add(leaves);
+
+                    tree.position.copy(treePos);
+                    treeGroup.add(tree);
+                }
+            });
+            scene.add(treeGroup);
+
+            // --- RAILWAY TRACKS ---
+            const trackGroup = new THREE.Group();
+            const railMat = new THREE.MeshPhongMaterial({ color: 0x64748b });
+            const sleeperMat = new THREE.MeshPhongMaterial({ color: 0x451a03 });
+
+            const points = curve.getPoints(500);
+            const railSpacing = 20;
+
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i];
+                const p2 = points[i + 1];
+                const dir = new THREE.Vector3().subVectors(p2, p1).normalize();
+                const norm = new THREE.Vector3(-dir.z, 0, dir.x).normalize().multiplyScalar(railSpacing / 2);
+
+                // Rails (Small boxes following the curve)
+                const railL = new THREE.Mesh(new THREE.BoxGeometry(2, 2, p1.distanceTo(p2) + 1), railMat);
+                railL.position.copy(p1.clone().add(p2).multiplyScalar(0.5).add(norm));
+                railL.lookAt(p2.clone().add(norm));
+                trackGroup.add(railL);
+
+                const railR = new THREE.Mesh(new THREE.BoxGeometry(2, 2, p1.distanceTo(p2) + 1), railMat);
+                railR.position.copy(p1.clone().add(p2).multiplyScalar(0.5).sub(norm));
+                railR.lookAt(p2.clone().sub(norm));
+                trackGroup.add(railR);
+
+                // Sleepers (Wooden planks)
+                if (i % 6 === 0) {
+                    const sleeper = new THREE.Mesh(new THREE.BoxGeometry(40, 3, 8), sleeperMat);
+                    sleeper.position.copy(p1);
+                    sleeper.position.y -= 2;
+                    sleeper.lookAt(p2);
+                    sleeper.rotateY(Math.PI / 2);
+                    trackGroup.add(sleeper);
+                }
+            }
+            scene.add(trackGroup);
+
+            // --- TRAIN MODELS ---
+            const metalMat = new THREE.MeshPhongMaterial({ color: 0x1e293b, shininess: 80 });
+            const carriageMat = new THREE.MeshPhongMaterial({ color: 0x475569 }); // Modern steel blue
+            const accentMat = new THREE.MeshPhongMaterial({ color: 0xf97316 });
+
+            // Function to create Engine
+            function createEngine() {
+                const group = new THREE.Group();
+                const boiler = new THREE.Mesh(new THREE.CylinderGeometry(15, 15, 50, 16), metalMat);
+                boiler.rotation.z = Math.PI / 2;
+                boiler.position.set(0, 20, 0);
+                group.add(boiler);
+
+                const cab = new THREE.Mesh(new THREE.BoxGeometry(32, 30, 20), metalMat);
+                cab.position.set(-25, 25, 0);
+                group.add(cab);
+
+                const chimney = new THREE.Mesh(new THREE.CylinderGeometry(6, 4, 15, 12), metalMat);
+                chimney.position.set(15, 35, 0);
+                group.add(chimney);
+
+                const front = new THREE.Mesh(new THREE.ConeGeometry(15, 15, 4), accentMat);
+                front.rotation.z = -Math.PI / 2;
+                front.position.set(25, 15, 0);
+                group.add(front);
+
+                return group;
+            }
+
+            // Function to create Carriage
+            function createCarriage() {
+                const group = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(60, 25, 28), carriageMat);
+                body.position.set(0, 18, 0);
+                group.add(body);
+
+                // Windows
+                const winGeo = new THREE.PlaneGeometry(6, 8);
+                const winMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
+                for (let x of [-20, -10, 0, 10, 20]) {
+                    const w1 = new THREE.Mesh(winGeo, winMat);
+                    w1.position.set(x, 20, 14.1);
+                    group.add(w1);
+                    const w2 = new THREE.Mesh(winGeo, winMat);
+                    w2.rotation.y = Math.PI;
+                    w2.position.set(x, 20, -14.1);
+                    group.add(w2);
+                }
+
+                // Wheels
+                const wheelGeo = new THREE.CylinderGeometry(6, 6, 2, 12);
+                for (let z of [-12, 12]) {
+                    for (let x of [-20, 20]) {
+                        const wheel = new THREE.Mesh(wheelGeo, metalMat);
+                        wheel.rotation.x = Math.PI / 2;
+                        wheel.position.set(x, 6, z);
+                        group.add(wheel);
+                    }
+                }
+
+                return group;
+            }
+
+            const engine = createEngine();
+            scene.add(engine);
+
+            const carriages = [createCarriage(), createCarriage(), createCarriage()];
+            carriages.forEach(c => scene.add(c));
+
+            // --- SMOKE & PARTICLES ---
+            const smokeParticles = [];
+            const smokeGeo = new THREE.SphereGeometry(1, 4, 4);
+            const smokeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+
+            function emitSmoke() {
+                const p = new THREE.Mesh(smokeGeo, smokeMat);
+                const smokestackPos = new THREE.Vector3(15, 40, 0);
+                engine.localToWorld(smokestackPos);
+                p.position.copy(smokestackPos);
+                p.scale.set(4, 4, 4);
+                p.userData = { life: 1, velocity: new THREE.Vector3(0, 1.5, 0) };
+                scene.add(p);
+                smokeParticles.push(p);
+            }
+
+            // --- ANIMATION ---
+            let t = 0;
+            const spacing = 0.0028; // Further reduced for super tight coupling
+
+            function updateMember(member, index, time) {
+                const currentT = (time - (index * spacing) + 1) % 1;
+                const pos = curve.getPointAt(currentT);
+                const tan = curve.getTangentAt(currentT);
+                member.position.copy(pos);
+                member.lookAt(pos.clone().add(tan));
+                member.rotateY(-Math.PI / 2); // Flipped from Math.PI / 2
+            }
+
+            function animate() {
+                requestAnimationFrame(animate);
+                t += 0.0006;
+
+                updateMember(engine, 0, t);
+                carriages.forEach((c, i) => updateMember(c, i + 1, t));
+
+                // Smoke
+                if (Math.random() > 0.4) emitSmoke();
+                for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                    const p = smokeParticles[i];
+                    p.position.y += p.userData.velocity.y;
+                    p.userData.life -= 0.01;
+                    p.scale.multiplyScalar(1.02);
+                    p.material.opacity = p.userData.life * 0.3;
+                    if (p.userData.life <= 0) {
+                        scene.remove(p);
+                        smokeParticles.splice(i, 1);
+                    }
+                }
+
+                // Camera follow
+                const enginePos = engine.position;
+                camera.position.lerp(new THREE.Vector3(enginePos.x + 400, enginePos.y + 400, enginePos.z + 400), 0.1);
+                camera.lookAt(enginePos);
+                controls.target.copy(enginePos);
+
+                const sIdx = Math.floor(t % 1 * (waypoints.length - 1));
+                document.getElementById('location').innerText = "Current Territory: " + (waypoints[sIdx].name);
+
+                controls.update();
+                renderer.render(scene, camera);
+            }
+
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        })();
+    </script>
+</body>
+
+</html>
