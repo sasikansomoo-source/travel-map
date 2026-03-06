@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D GPS Journey Express</title>
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(30, 30, 30, 0.85);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(77, 168, 218, 0.5);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+            pointer-events: none;
+            min-width: 250px;
+        }
+
+        #ui h2 {
+            margin: 0 0 15px 0;
+            color: #4da8da;
+            font-size: 1.4rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .data-row {
+            margin: 8px 0;
+            font-size: 1.05rem;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .data-label {
+            color: #aaa;
+            width: 80px;
+            flex-shrink: 0;
+        }
+
+        .data-value {
+            font-weight: 500;
+            color: #eee;
+        }
+
+        #footer {
+            margin-top: 15px;
+            font-size: 0.85rem;
+            color: #888;
+            border-top: 1px solid #444;
+            padding-top: 12px;
+            text-align: center;
+        }
+
+        #footer span {
+            color: #4da8da;
+            font-weight: bold;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10000;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px 40px;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            border: 1px solid #4da8da;
+            text-align: center;
+        }
+
+        #controls-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 8px;
+            color: #aaa;
+            font-size: 0.9rem;
+            z-index: 5;
+            pointer-events: none;
+        }
+    </style>
+    <!-- Import map for Three.js ES Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+</head>
+
+<body>
+    <div id="loading">Loading 3D Map...<br><span style="font-size:0.8em;color:#aaa;">Fetching GPS data 🌐</span></div>
+
+    <div id="ui">
+        <h2>🚄 3D Express</h2>
+        <div class="data-row">
+            <div class="data-label">📍 Place:</div>
+            <div class="data-value" id="locName">Loading...</div>
+        </div>
+        <div class="data-row">
+            <div class="data-label">🕒 Time:</div>
+            <div class="data-value" id="locTime">-</div>
+        </div>
+        <div class="data-row">
+            <div class="data-label">🔋 Batt:</div>
+            <div class="data-value" id="locBat">-</div>
+        </div>
+        <div class="data-row">
+            <div class="data-label">📱 Device:</div>
+            <div class="data-value" id="locDev">-</div>
+        </div>
+        <div id="footer">
+            🤖 สร้างโดย <span>Two Rivers (สองแคว)</span>
+            <br><span style="color:#aaa; font-weight:normal; font-size:0.9em;">Teaching Oracle</span>
+        </div>
+    </div>
+
+    <div id="controls-hint">👆 Left Click: Rotate | ✌ Right Click: Pan | 🖱 Scroll: Zoom</div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        let scene, camera, renderer, controls;
+        let curve, train, trainInner;
+        let filteredData = [];
+        let filteredPoints = [];
+        let progress = 0;
+
+        const EARTH_RADIUS = 6371; // km
+
+        function init() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color('#0a0a0a');
+            scene.fog = new THREE.FogExp2('#0a0a0a', 0.003);
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 150, 200);
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            document.body.appendChild(renderer.domElement);
+
+            // Controls Setup
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxPolarAngle = Math.PI / 2 - 0.05; // Prevent camera from going under ground
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight.position.set(300, 500, 200);
+            scene.add(dirLight);
+
+            // Simple styling: Grid base
+            const gridHelper = new THREE.GridHelper(2000, 100, 0x111111, 0x111111);
+            gridHelper.position.y = -1;
+            scene.add(gridHelper);
+
+            // Load Data
+            Papa.parse('https://raw.githubusercontent.com/Soul-Brews-Studio/two-rivers-oracle/main/%CF%88/lab/github-pages-workshop/travel-phitsanulok.csv', {
+                download: true,
+                header: true,
+                complete: function (results) { processData(results.data); },
+                error: function (e) { document.getElementById('loading').innerHTML = "⚠️ Error loading data."; }
+            });
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // Project Lat/Lon to a flat X/Z plane centered around the journey
+        function latLonToVector(lat, lon, centerLat, centerLon) {
+            const scale = 2.5; // Scale up the world
+            // X corresponds to Longitude, Z corresponds to Latitude
+            const x = (lon - centerLon) * (Math.PI / 180) * EARTH_RADIUS * Math.cos(centerLat * Math.PI / 180) * scale;
+            const z = -(lat - centerLat) * (Math.PI / 180) * EARTH_RADIUS * scale; // negative because north is up (+lat), but screen Z goes down (+z)
+            return new THREE.Vector3(x, 0, z);
+        }
+
+        function processData(data) {
+            let lats = [], lons = [];
+            data.forEach(r => {
+                let lat = parseFloat(r.lat); let lon = parseFloat(r.lon);
+                if (!isNaN(lat) && !isNaN(lon)) { lats.push(lat); lons.push(lon); }
+            });
+
+            if (lats.length === 0) return;
+
+            const centerLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+            const centerLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+
+            let lastP = null;
+
+            data.forEach(row => {
+                let lat = parseFloat(row.lat); let lon = parseFloat(row.lon);
+                if (isNaN(lat) || !lon) return;
+
+                let p = latLonToVector(lat, lon, centerLat, centerLon);
+
+                // Keep points that are far enough apart to form a smooth track (approx > 500m scale)
+                if (!lastP || p.distanceTo(lastP) > 1.5) {
+                    filteredPoints.push(p);
+                    filteredData.push(row);
+                    lastP = p;
+                }
+            });
+
+            if (filteredPoints.length > 1) {
+                // Build the smooth track curve
+                curve = new THREE.CatmullRomCurve3(filteredPoints, false, 'catmullrom', 0.2);
+
+                // Track mesh (Glowing tube)
+                const tubeGeo = new THREE.TubeGeometry(curve, filteredPoints.length * 6, 1.2, 8, false);
+                const tubeMat = new THREE.MeshStandardMaterial({
+                    color: 0x4da8da,
+                    emissive: 0x22668a,
+                    emissiveIntensity: 0.6,
+                    roughness: 0.2
+                });
+                const tube = new THREE.Mesh(tubeGeo, tubeMat);
+                scene.add(tube);
+
+                // Waypoint Markers
+                const sphereGeo = new THREE.SphereGeometry(2.5, 16, 16);
+                const sphereMat = new THREE.MeshStandardMaterial({ color: 0xff4b4b, emissive: 0xcc2222, emissiveIntensity: 0.8 });
+
+                filteredPoints.forEach(p => {
+                    const s = new THREE.Mesh(sphereGeo, sphereMat);
+                    s.position.copy(p);
+                    scene.add(s);
+                });
+
+                buildTrain();
+
+                // Center Camera roughly on start
+                if (filteredPoints.length > 0) {
+                    camera.position.set(filteredPoints[0].x, 150, filteredPoints[0].z + 150);
+                    controls.target.copy(filteredPoints[0]);
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                animate();
+            } else {
+                document.getElementById('loading').innerHTML = "⚠️ Not enough data points to build a track.";
+            }
+        }
+
+        function buildTrain() {
+            train = new THREE.Group();
+            trainInner = new THREE.Group();
+
+            // Reorient train so it travels facing "forward" along the curve tangent
+            // Three.js lookAt defaults to -Z as front.
+            trainInner.rotation.y = Math.PI; // flip +Z to -Z direction
+
+            // Materials
+            const matDark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.4 });
+            const matRed = new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.5, roughness: 0.3 });
+            const matBlue = new THREE.MeshStandardMaterial({ color: 0x4da8da, metalness: 0.5, roughness: 0.2 });
+
+            // Base Chassis
+            const chassisGeo = new THREE.BoxGeometry(4.5, 1.5, 10);
+            const chassis = new THREE.Mesh(chassisGeo, matDark);
+            chassis.position.y = 1;
+            trainInner.add(chassis);
+
+            // Front Boiler (Red cylinder)
+            const boilerGeo = new THREE.CylinderGeometry(1.5, 1.5, 6, 24);
+            boilerGeo.rotateX(Math.PI / 2);
+            const boiler = new THREE.Mesh(boilerGeo, matRed);
+            boiler.position.set(0, 3.25, 2);
+            trainInner.add(boiler);
+
+            // Rear Cabin
+            const cabinGeo = new THREE.BoxGeometry(4.5, 4.5, 4);
+            const cabin = new THREE.Mesh(cabinGeo, matBlue);
+            cabin.position.set(0, 4, -3);
+            trainInner.add(cabin);
+
+            // Roof
+            const roofGeo = new THREE.BoxGeometry(5, 0.5, 4.5);
+            const roof = new THREE.Mesh(roofGeo, matDark);
+            roof.position.set(0, 6.5, -3);
+            trainInner.add(roof);
+
+            // Headlight glow
+            const lightGeo = new THREE.SphereGeometry(1, 16, 16);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const lightMesh = new THREE.Mesh(lightGeo, lightMat);
+            lightMesh.position.set(0, 3.25, 5.2);
+            trainInner.add(lightMesh);
+
+            // Dynamic Light Emitter
+            const pointLight = new THREE.PointLight(0xffffee, 3, 100);
+            pointLight.position.set(0, 4, 6);
+            trainInner.add(pointLight);
+
+            // Add inner group to main train group
+            train.add(trainInner);
+            scene.add(train);
+        }
+
+        function updateUI(pos) {
+            // Find closest data point accurately
+            let clIdx = 0;
+            let minD = Infinity;
+            for (let i = 0; i < filteredPoints.length; i++) {
+                let d = filteredPoints[i].distanceToSquared(pos);
+                if (d < minD) {
+                    minD = d;
+                    clIdx = i;
+                }
+            }
+
+            let rd = filteredData[clIdx];
+            if (rd) {
+                // Formatting
+                let pName = rd.place || rd.locality || rd.address || 'Unknown';
+                document.getElementById('locName').innerText = pName.length > 30 ? pName.substring(0, 30) + '...' : pName;
+
+                try {
+                    document.getElementById('locTime').innerText = new Date(rd.updated).toLocaleString('th-TH');
+                } catch (e) {
+                    document.getElementById('locTime').innerText = rd.updated || '-';
+                }
+
+                let batteryTxt = rd.battery !== null && rd.battery !== undefined ? Math.round(rd.battery) + '%' : 'N/A';
+                if (rd.charging) batteryTxt += ' ⚡';
+                document.getElementById('locBat').innerText = batteryTxt;
+
+                document.getElementById('locDev').innerText = rd.model || rd.device || '-';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            if (curve && train) {
+                // Move train along curve
+                progress += 0.0007; // Speed of the train
+                if (progress > 1) progress = 0;
+
+                const pos = curve.getPointAt(progress);
+                const tangent = curve.getTangentAt(progress);
+
+                train.position.copy(pos);
+
+                // Determine orientation
+                const lookAtPos = pos.clone().add(tangent);
+                train.lookAt(lookAtPos);
+
+                // Make camera loosely follow the train if desired, 
+                // but just keeping tracking is nicer with orbit controls.
+                // We'll update the target instead so Orbit controls pivot around the moving train.
+                controls.target.copy(pos);
+
+                // UI Map Binding
+                updateUI(pos);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Initialize script
+        init();
+    </script>
+</body>
+
+</html>
