@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORACLE CYBERNETIC GPS DASHBOARD</title>
+
+    <!-- Google Fonts for futuristic look -->
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap"
+        rel="stylesheet">
+
+    <!-- CSS Modules -->
+    <style>
+        :root {
+            --neon-blue: #00f3ff;
+            --neon-pink: #ff00ea;
+            --dark-bg: #050510;
+            --panel-bg: rgba(5, 5, 20, 0.7);
+            --border-glow: #00f3ff;
+            --text-color: #e0faff;
+        }
+
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: var(--dark-bg);
+            color: var(--text-color);
+            font-family: 'Share Tech Mono', monospace;
+            overflow: hidden;
+            background-image: radial-gradient(circle at 50% 50%, #111 0%, #000 100%);
+        }
+
+        /* 3D Canvas Container */
+        #webgl-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        /* UI Overlay Systems */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 10;
+            pointer-events: none;
+            /* Let clicks pass to 3D */
+            display: grid;
+            grid-template-columns: 350px 1fr 350px;
+            grid-template-rows: 80px 1fr 200px;
+            padding: 20px;
+            box-sizing: border-box;
+            gap: 20px;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-glow);
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.2), inset 0 0 15px rgba(0, 243, 255, 0.1);
+            backdrop-filter: blur(8px);
+            border-radius: 4px;
+            padding: 15px;
+            pointer-events: auto;
+            /* Re-enable clicks for panels */
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Cyberpunk Corner Accents */
+        .panel::before,
+        .panel::after {
+            content: '';
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--neon-pink);
+            transition: all 0.3s ease;
+        }
+
+        .panel::before {
+            top: -2px;
+            left: -2px;
+            border-right: none;
+            border-bottom: none;
+        }
+
+        .panel::after {
+            bottom: -2px;
+            right: -2px;
+            border-left: none;
+            border-top: none;
+        }
+
+        /* HEADER */
+        header {
+            grid-column: 1 / -1;
+            grid-row: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--neon-blue);
+            background: linear-gradient(90deg, transparent, rgba(0, 243, 255, 0.1), transparent);
+        }
+
+        header h1 {
+            font-family: 'Orbitron', sans-serif;
+            margin: 0;
+            font-size: 1.8rem;
+            color: var(--neon-blue);
+            text-shadow: 0 0 10px var(--neon-blue);
+            letter-spacing: 2px;
+        }
+
+        header .status {
+            color: var(--neon-pink);
+            font-weight: bold;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            100% {
+                opacity: 1;
+                text-shadow: 0 0 8px var(--neon-pink);
+            }
+
+            50% {
+                opacity: 0.5;
+                text-shadow: none;
+            }
+        }
+
+        /* LEFT PANEL: Data Stream */
+        #data-stream-panel {
+            grid-column: 1;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #data-stream-panel h3 {
+            margin-top: 0;
+            color: var(--neon-blue);
+            border-bottom: 1px dashed var(--neon-blue);
+            padding-bottom: 5px;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        #terminal {
+            flex-grow: 1;
+            overflow-y: hidden;
+            overflow-x: hidden;
+            font-size: 0.85rem;
+            color: #55ff55;
+            position: relative;
+        }
+
+        .terminal-line {
+            margin: 4px 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .terminal-line.highlight {
+            color: var(--neon-blue);
+            font-weight: bold;
+        }
+
+        .terminal-line.error {
+            color: var(--neon-pink);
+        }
+
+        /* RIGHT PANEL: Stats */
+        #stats-panel {
+            grid-column: 3;
+            grid-row: 2;
+        }
+
+        .stat-box {
+            margin-bottom: 20px;
+            background: rgba(0, 243, 255, 0.05);
+            padding: 10px;
+            border-left: 3px solid var(--neon-pink);
+        }
+
+        .stat-value {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.8rem;
+            color: var(--neon-blue);
+            margin: 5px 0;
+        }
+
+        /* BOTTOM PANEL: Chart.js */
+        #chart-panel {
+            grid-column: 1 / -1;
+            grid-row: 3;
+            padding: 10px;
+        }
+
+        canvas#batteryChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
+        /* Loading Screen */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #000;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            font-family: 'Orbitron', sans-serif;
+            color: var(--neon-blue);
+        }
+
+        .loader-bar {
+            width: 300px;
+            height: 4px;
+            border: 1px solid var(--neon-blue);
+            margin-top: 20px;
+            position: relative;
+        }
+
+        .loader-fill {
+            height: 100%;
+            background: var(--neon-blue);
+            width: 0%;
+            box-shadow: 0 0 10px var(--neon-blue);
+            transition: width 0.3s;
+        }
+
+        footer {
+            position: absolute;
+            bottom: -20px;
+            right: 0;
+            font-size: 0.7rem;
+            color: var(--neon-blue);
+            opacity: 0.7;
+        }
+    </style>
+
+    <!-- Import Libraries -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <h1>INITIALIZING SYSTEM</h1>
+        <div style="font-family: 'Share Tech Mono'">Awaiting GPS Telemetry...</div>
+        <div class="loader-bar">
+            <div class="loader-fill" id="loaderFill"></div>
+        </div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <div id="webgl-container"></div>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        <header>
+            <h1>SYS.ORACLE // DATA_TOPOGRAPHY</h1>
+            <div class="status">LIVE FEED ⚡</div>
+        </header>
+
+        <!-- Left: Terminal -->
+        <div class="panel" id="data-stream-panel">
+            <h3>TELEMETRY DECRYPT</h3>
+            <div id="terminal"></div>
+        </div>
+
+        <!-- Center: Empty for 3D View -->
+
+        <!-- Right: Real-time Stats -->
+        <div class="panel" id="stats-panel">
+            <h3 style="color:var(--neon-blue); font-family:'Orbitron',sans-serif; margin-top:0;">WAYPOINT METRICS</h3>
+            <div class="stat-box">
+                <div style="color:#aaa; font-size:0.9rem">CURRENT REGION</div>
+                <div class="stat-value" id="ui-region">LINKING...</div>
+            </div>
+            <div class="stat-box" style="border-left-color:var(--neon-blue)">
+                <div style="color:#aaa; font-size:0.9rem">BATTERY RESERVES</div>
+                <div class="stat-value" id="ui-batt" style="color:var(--neon-pink)">0%</div>
+            </div>
+            <div class="stat-box">
+                <div style="color:#aaa; font-size:0.9rem">COORDINATES (LAT/LON)</div>
+                <div class="stat-value" id="ui-coords" style="font-size:1.2rem; margin-top:10px;">[ 0.00, 0.00 ]</div>
+            </div>
+            <footer>สร้างโดย Two Rivers (สอน Oracle)</footer>
+        </div>
+
+        <!-- Bottom: Chart Area -->
+        <div class="panel" id="chart-panel">
+            <canvas id="batteryChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Application Logic -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Globals
+        let scene, camera, renderer, controls;
+        let gpsData = [];
+        let dataIndex = 0;
+        let terminalLines = [];
+        const maxTerminalLines = 20;
+        let batteryChartInstance = null;
+        let highlightPillar = null; // To highlight the current point
+
+        let allPillars = [];
+
+        // Data Source
+        const csvUrl = 'https://raw.githubusercontent.com/Soul-Brews-Studio/two-rivers-oracle/main/docs/data.csv';
+
+        // Boot
+        initApp();
+
+        function initApp() {
+            updateLoader(10);
+
+            // 1. Fetch Data
+            Papa.parse(csvUrl, {
+                download: true,
+                header: true,
+                dynamicTyping: true,
+                skipEmptyLines: true,
+                complete: (results) => {
+                    updateLoader(50);
+                    processData(results.data);
+
+                    if (gpsData.length > 0) {
+                        initThreeJS();
+                        initChartJS();
+
+                        updateLoader(100);
+                        setTimeout(() => {
+                            document.getElementById('loading').style.display = 'none';
+                            animate();
+                            startDataSimulation();
+                        }, 500);
+                    } else {
+                        document.getElementById('loading').innerHTML = "<h1 style='color:red'>DATA_NULL_ERR</h1>";
+                    }
+                },
+                error: (e) => {
+                    document.getElementById('loading').innerHTML = "<h1 style='color:red'>FETCH_FAILED_ERR</h1>";
+                }
+            });
+        }
+
+        function updateLoader(pct) {
+            document.getElementById('loaderFill').style.width = pct + '%';
+        }
+
+        function processData(rawData) {
+            // Clean and sort data
+            rawData.forEach(row => {
+                if (row.lat && row.lon && !isNaN(row.lat)) {
+                    gpsData.push({
+                        lat: parseFloat(row.lat),
+                        lon: parseFloat(row.lon),
+                        battery: row.battery !== null ? parseFloat(row.battery) : 0,
+                        charging: row.charging,
+                        place: row.place || row.locality || row.address || 'UNKNOWN SEC',
+                        time: row.updated || new Date().toISOString()
+                    });
+                }
+            });
+
+            // Sort chronologically if needed (assuming CSV is rough chrono already, but just in case)
+            // Reverse so it plays from start to end (sometimes raw logs are newest-first)
+            // Let's assume the CSV is newest at top, we want chronologoical.
+            gpsData.reverse();
+        }
+
+        /* ================= THREE.JS SYSTEM ================= */
+        const EARTH_SCALE = 200; // Scaling factor for projection
+
+        function initThreeJS() {
+            // Scene Setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x050510, 0.005);
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(0, 100, 150);
+
+            // Renderer
+            const container = document.getElementById('webgl-container');
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            // Neon bloom/post-proc skipped for core performance, relying on emissive mats
+            container.appendChild(renderer.domElement);
+
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.autoRotate = true;
+            controls.autoRotateSpeed = 0.5;
+            controls.maxPolarAngle = Math.PI / 2 - 0.1;
+
+            // Lights
+            const ambient = new THREE.AmbientLight(0x222244);
+            scene.add(ambient);
+
+            const dirLight = new THREE.DirectionalLight(0x00f3ff, 2);
+            dirLight.position.set(500, 1000, 500);
+            scene.add(dirLight);
+
+            const pinkLight = new THREE.PointLight(0xff00ea, 5, 200);
+            pinkLight.position.set(-100, 50, -100);
+            scene.add(pinkLight);
+
+            // Cyberspace Grid Base
+            const gridHelper = new THREE.GridHelper(1000, 200, 0x00f3ff, 0x001133);
+            gridHelper.position.y = -0.5;
+            scene.add(gridHelper);
+
+            // Core logic: Plotting data as a cityscape/topography of pillars
+            buildDataTopography();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        }
+
+        function buildDataTopography() {
+            // Find center
+            let lats = gpsData.map(d => d.lat);
+            let lons = gpsData.map(d => d.lon);
+            const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+            const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+
+            // Geometries
+            const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+
+            const matNormal = new THREE.MeshStandardMaterial({
+                color: 0x002244, emissive: 0x00f3ff, emissiveIntensity: 0.2, transparent: true, opacity: 0.6
+            });
+            const matCharging = new THREE.MeshStandardMaterial({
+                color: 0x440022, emissive: 0xff00ea, emissiveIntensity: 0.4, transparent: true, opacity: 0.8
+            });
+
+            // Create pillars
+            gpsData.forEach((d, i) => {
+                // Projection
+                const x = (d.lon - cLon) * (Math.PI / 180) * 6371 * Math.cos(cLat * Math.PI / 180) * 1.5;
+                const z = -(d.lat - cLat) * (Math.PI / 180) * 6371 * 1.5;
+
+                // Height based on battery (0 to 100 -> 1 to 30)
+                const h = Math.max(d.battery / 3, 1);
+
+                const mesh = new THREE.Mesh(boxGeo, d.charging ? matCharging : matNormal);
+                mesh.position.set(x, h / 2, z);
+                mesh.scale.set(1.5, h, 1.5);
+
+                // Save meta references
+                mesh.userData = { index: i, originalHeight: h, srcData: d };
+
+                scene.add(mesh);
+                allPillars.push(mesh);
+
+                // Connect with lines
+                if (i > 0) {
+                    const prevX = (gpsData[i - 1].lon - cLon) * (Math.PI / 180) * 6371 * Math.cos(cLat * Math.PI / 180) * 1.5;
+                    const prevZ = -(gpsData[i - 1].lat - cLat) * (Math.PI / 180) * 6371 * 1.5;
+
+                    const points = [
+                        new THREE.Vector3(prevX, 0, prevZ),
+                        new THREE.Vector3(x, 0, z)
+                    ];
+                    const lineMat = new THREE.LineBasicMaterial({ color: 0x00f3ff, transparent: true, opacity: 0.1 });
+                    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                    scene.add(new THREE.Line(lineGeo, lineMat));
+                }
+            });
+
+            // Center camera
+            if (allPillars.length > 0) {
+                controls.target.copy(allPillars[Math.floor(allPillars.length / 2)].position);
+                controls.target.y = 0;
+            }
+
+            // Highlight mesh layer
+            const hlGeo = new THREE.CylinderGeometry(0, 3, 15, 4);
+            const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.5 });
+            highlightPillar = new THREE.Mesh(hlGeo, hlMat);
+            highlightPillar.position.y = -100; // hide initially
+            scene.add(highlightPillar);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Pulsate the highlight marker
+            if (highlightPillar && highlightPillar.position.y > -50) {
+                highlightPillar.rotation.y += 0.05;
+                const time = Date.now() * 0.003;
+                highlightPillar.scale.y = 1 + Math.sin(time) * 0.2;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        /* ================= CHART.JS SYSTEM ================= */
+        function initChartJS() {
+            const ctx = document.getElementById('batteryChart').getContext('2d');
+
+            Chart.defaults.color = '#00f3ff';
+            Chart.defaults.font.family = "'Share Tech Mono', monospace";
+
+            // Initial empty data, we will fill it as the simulation runs
+            batteryChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'SYS_BATTERY_LVL',
+                        data: [],
+                        borderColor: '#ff00ea',
+                        backgroundColor: 'rgba(255, 0, 234, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHitRadius: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 0 }, // no animation for instant stream feel
+                    scales: {
+                        y: {
+                            min: 0, max: 100,
+                            grid: { color: 'rgba(0, 243, 255, 0.1)' }
+                        },
+                        x: {
+                            grid: { display: false },
+                            ticks: { display: false } // hide clutter
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
+        /* ================= SIMULATION & UI LOGIC ================= */
+        // Runs a playback loop through the data points
+        function startDataSimulation() {
+            setInterval(() => {
+                if (dataIndex >= gpsData.length) {
+                    dataIndex = 0; // loop back
+                    // Clear chart data for loop
+                    batteryChartInstance.data.labels = [];
+                    batteryChartInstance.data.datasets[0].data = [];
+                }
+
+                const currentPoint = gpsData[dataIndex];
+                const mesh = allPillars[dataIndex];
+
+                // 1. Terminal Output
+                let timeStr = new Date(currentPoint.time).toLocaleTimeString('en-US', { hour12: false });
+                let logMsg = `[${timeStr}] INGEST: [${currentPoint.lat.toFixed(4)}, ${currentPoint.lon.toFixed(4)}] :: BAT:${currentPoint.battery}%`;
+                addTerminalLine(logMsg, currentPoint.charging ? 'highlight' : '');
+
+                // 2. Stats Deck
+                let pName = currentPoint.place;
+                document.getElementById('ui-region').innerText = pName.length > 20 ? pName.substring(0, 20) + '...' : pName;
+                document.getElementById('ui-batt').innerText = `${Math.round(currentPoint.battery)}%`;
+                document.getElementById('ui-batt').style.color = currentPoint.charging ? 'var(--neon-blue)' : 'var(--neon-pink)';
+                document.getElementById('ui-coords').innerText = `[ ${currentPoint.lat.toFixed(5)}, ${currentPoint.lon.toFixed(5)} ]`;
+
+                // 3. Update Chart
+                batteryChartInstance.data.labels.push(timeStr);
+                batteryChartInstance.data.datasets[0].data.push(currentPoint.battery);
+
+                // Keep chart window moving (keep last 50 points)
+                if (batteryChartInstance.data.labels.length > 50) {
+                    batteryChartInstance.data.labels.shift();
+                    batteryChartInstance.data.datasets[0].data.shift();
+                }
+                batteryChartInstance.update();
+
+                // 4. Update 3D Topography Highlight
+                if (mesh) {
+                    // Temporarily make the current pillar glow bright white
+                    const origMat = mesh.material;
+                    mesh.material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+                    // Move the diamond cursor above it
+                    highlightPillar.position.copy(mesh.position);
+                    highlightPillar.position.y += (mesh.scale.y / 2) + 5;
+
+                    // Revert after shortly
+                    setTimeout(() => {
+                        if (mesh) mesh.material = origMat;
+                    }, 150);
+
+                    // Slightly pan camera to follow sometimes
+                    if (dataIndex % 10 === 0) {
+                        // Pan smoothly
+                        // controls.target.lerp(mesh.position, 0.1);
+                    }
+                }
+
+                dataIndex++;
+            }, 100); // Fast ingest interval (100ms per row)
+        }
+
+        function addTerminalLine(text, className) {
+            const term = document.getElementById('terminal');
+            const div = document.createElement('div');
+            div.className = 'terminal-line ' + className;
+            div.innerText = '> ' + text;
+
+            term.appendChild(div);
+            terminalLines.push(div);
+
+            if (terminalLines.length > maxTerminalLines) {
+                const old = terminalLines.shift();
+                term.removeChild(old);
+            }
+
+            // Auto scroll to bottom equivalent
+            term.scrollTop = term.scrollHeight;
+        }
+
+    </script>
+</body>
+
+</html>
