@@ -309,7 +309,8 @@
 
             // Reorient train so it travels facing "forward" along the curve tangent
             // Three.js lookAt defaults to -Z as front.
-            trainInner.rotation.y = Math.PI; // flip +Z to -Z direction
+            // Changed from Math.PI to 0 to flip it to the opposite direction requested by user.
+            trainInner.rotation.y = 0;
 
             // Make the train much bigger!
             trainInner.scale.set(3, 3, 3);
