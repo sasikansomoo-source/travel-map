@@ -388,8 +388,8 @@
                     gpsData.push({
                         lat: parseFloat(row.lat),
                         lon: parseFloat(row.lon),
-                        battery: row.battery !== null ? parseFloat(row.battery) : 0,
-                        charging: row.charging,
+                        battery: row.battery !== undefined && row.battery !== null ? parseFloat(row.battery) : null,
+                        charging: row.charging === true || row.charging === 'true',
                         place: row.place || row.locality || row.address || 'UNKNOWN SEC',
                         time: row.updated || new Date().toISOString()
                     });
@@ -400,6 +400,15 @@
             // Reverse so it plays from start to end (sometimes raw logs are newest-first)
             // Let's assume the CSV is newest at top, we want chronologoical.
             gpsData.reverse();
+
+            // Synthesize missing battery data chronologically
+            let simulatedBattery = 100;
+            gpsData.forEach(d => {
+                if (d.battery === null || isNaN(d.battery)) {
+                    simulatedBattery = Math.max(12, simulatedBattery - (Math.random() * 0.8)); // Drain slowly
+                    d.battery = simulatedBattery;
+                }
+            });
         }
 
         /* ================= THREE.JS SYSTEM ================= */
