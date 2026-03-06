@@ -240,16 +240,43 @@
                 // Build the smooth track curve
                 curve = new THREE.CatmullRomCurve3(filteredPoints, false, 'catmullrom', 0.2);
 
-                // Track mesh (Glowing tube)
-                const tubeGeo = new THREE.TubeGeometry(curve, filteredPoints.length * 6, 1.2, 8, false);
-                const tubeMat = new THREE.MeshStandardMaterial({
-                    color: 0x4da8da,
-                    emissive: 0x22668a,
-                    emissiveIntensity: 0.6,
-                    roughness: 0.2
+                // Track mesh (Glowing dual rails - ลางไฟ)
+                const leftRailPoints = [];
+                const rightRailPoints = [];
+                const up = new THREE.Vector3(0, 1, 0);
+
+                // Calculate parallel rail curves
+                for (let i = 0; i <= 1; i += 0.005) {
+                    const p = curve.getPointAt(i);
+                    const t = curve.getTangentAt(i);
+                    const right = new THREE.Vector3().crossVectors(t, up).normalize().multiplyScalar(1.2);
+                    leftRailPoints.push(p.clone().add(right));
+                    rightRailPoints.push(p.clone().sub(right));
+                }
+
+                const railMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    emissive: 0x00e5ff,
+                    emissiveIntensity: 1.5,
+                    transparent: true,
+                    opacity: 0.9,
+                    roughness: 0.1
                 });
-                const tube = new THREE.Mesh(tubeGeo, tubeMat);
-                scene.add(tube);
+
+                const railGeo1 = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(leftRailPoints), filteredPoints.length * 6, 0.25, 6, false);
+                const railGeo2 = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(rightRailPoints), filteredPoints.length * 6, 0.25, 6, false);
+                scene.add(new THREE.Mesh(railGeo1, railMat));
+                scene.add(new THREE.Mesh(railGeo2, railMat));
+
+                // Central track glow bed
+                const bedGeo = new THREE.TubeGeometry(curve, filteredPoints.length * 4, 1.8, 8, false);
+                const bedMat = new THREE.MeshBasicMaterial({
+                    color: 0x001133,
+                    transparent: true,
+                    opacity: 0.5,
+                    depthWrite: false
+                });
+                scene.add(new THREE.Mesh(bedGeo, bedMat));
 
                 // Waypoint Markers
                 const sphereGeo = new THREE.SphereGeometry(2.5, 16, 16);
@@ -325,6 +352,40 @@
             const pointLight = new THREE.PointLight(0xffffee, 3, 100);
             pointLight.position.set(0, 4, 6);
             trainInner.add(pointLight);
+
+            // Passenger Carriages (ตู้โดยสาร)
+            for (let i = 1; i <= 2; i++) {
+                const zOffset = -3 - (i * 11); // Space them out behind the engine
+
+                // Connector link
+                const connGeo = new THREE.CylinderGeometry(0.3, 0.3, 2);
+                connGeo.rotateX(Math.PI / 2);
+                const connector = new THREE.Mesh(connGeo, matDark);
+                connector.position.set(0, 1.5, zOffset + 5.5);
+                trainInner.add(connector);
+
+                // Carriage Base
+                const cBase = new THREE.Mesh(new THREE.BoxGeometry(4.5, 1.5, 9), matDark);
+                cBase.position.set(0, 1, zOffset);
+                trainInner.add(cBase);
+
+                // Carriage Body
+                const cBody = new THREE.Mesh(new THREE.BoxGeometry(4.5, 4.5, 9), matBlue);
+                cBody.position.set(0, 4, zOffset);
+                trainInner.add(cBody);
+
+                // Carriage Roof
+                const cRoof = new THREE.Mesh(new THREE.BoxGeometry(5, 0.5, 9.5), matDark);
+                cRoof.position.set(0, 6.5, zOffset);
+                trainInner.add(cRoof);
+
+                // Glowing Window Strips (Passenger lights)
+                const windowGeo = new THREE.BoxGeometry(4.6, 1.2, 7.5);
+                const windowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x00e5ff, emissiveIntensity: 0.8 });
+                const windowMesh = new THREE.Mesh(windowGeo, windowMat);
+                windowMesh.position.set(0, 4, zOffset);
+                trainInner.add(windowMesh);
+            }
 
             // Add inner group to main train group
             train.add(trainInner);
