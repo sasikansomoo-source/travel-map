@@ -311,10 +311,13 @@
             // Three.js lookAt defaults to -Z as front.
             trainInner.rotation.y = Math.PI; // flip +Z to -Z direction
 
-            // Materials
-            const matDark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, metalness: 0.8, roughness: 0.4 });
-            const matRed = new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.5, roughness: 0.3 });
-            const matBlue = new THREE.MeshStandardMaterial({ color: 0x4da8da, metalness: 0.5, roughness: 0.2 });
+            // Make the train much bigger!
+            trainInner.scale.set(3, 3, 3);
+
+            // Materials (Brighter for visibility)
+            const matDark = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.6, roughness: 0.4 });
+            const matRed = new THREE.MeshStandardMaterial({ color: 0xff4444, emissive: 0x880000, metalness: 0.3, roughness: 0.3 });
+            const matBlue = new THREE.MeshStandardMaterial({ color: 0x4da8da, emissive: 0x003355, metalness: 0.4, roughness: 0.2 });
 
             // Base Chassis
             const chassisGeo = new THREE.BoxGeometry(4.5, 1.5, 10);
@@ -348,9 +351,9 @@
             lightMesh.position.set(0, 3.25, 5.2);
             trainInner.add(lightMesh);
 
-            // Dynamic Light Emitter
-            const pointLight = new THREE.PointLight(0xffffee, 3, 100);
-            pointLight.position.set(0, 4, 6);
+            // Dynamic Light Emitter (Much brighter & wider)
+            const pointLight = new THREE.PointLight(0xffffff, 10, 300);
+            pointLight.position.set(0, 8, 6);
             trainInner.add(pointLight);
 
             // Passenger Carriages (ตู้โดยสาร)
@@ -381,7 +384,7 @@
 
                 // Glowing Window Strips (Passenger lights)
                 const windowGeo = new THREE.BoxGeometry(4.6, 1.2, 7.5);
-                const windowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x00e5ff, emissiveIntensity: 0.8 });
+                const windowMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x00e5ff, emissiveIntensity: 1.5 });
                 const windowMesh = new THREE.Mesh(windowGeo, windowMat);
                 windowMesh.position.set(0, 4, zOffset);
                 trainInner.add(windowMesh);
