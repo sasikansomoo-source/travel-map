@@ -309,8 +309,8 @@
 
             // Reorient train so it travels facing "forward" along the curve tangent
             // Three.js lookAt defaults to -Z as front.
-            // Changed from Math.PI to 0 to flip it to the opposite direction requested by user.
-            trainInner.rotation.y = 0;
+            // Restored back to Math.PI so the engine leads!
+            trainInner.rotation.y = Math.PI;
 
             // Make the train much bigger!
             trainInner.scale.set(3, 3, 3);
@@ -428,17 +428,26 @@
             }
         }
 
+        let direction = 1;
+
         function animate() {
             requestAnimationFrame(animate);
             controls.update();
 
             if (curve && train) {
                 // Move train along curve
-                progress += 0.0007; // Speed of the train
-                if (progress > 1) progress = 0;
+                progress += 0.0007 * direction; // Speed of the train and direction
+
+                if (progress >= 1) {
+                    progress = 1;
+                    direction = -1; // reverse direction to drive back
+                } else if (progress <= 0) {
+                    progress = 0;
+                    direction = 1; // forward direction
+                }
 
                 const pos = curve.getPointAt(progress);
-                const tangent = curve.getTangentAt(progress);
+                const tangent = curve.getTangentAt(progress).multiplyScalar(direction);
 
                 train.position.copy(pos);
 
